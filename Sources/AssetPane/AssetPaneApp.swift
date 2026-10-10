@@ -43,6 +43,8 @@ final class AppModel: NSObject, ObservableObject, NSWindowDelegate {
         }
     }
     @Published var editingLayout = false { didSet { panel.setEditing(editingLayout) } }
+    /// 正在拖动缩放手柄：界面用冻结的排版整体缩放（省算力），松手后再按新大小重排
+    @Published var liveResizing = false
     @Published private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published private(set) var summary = Summary()
     @Published private(set) var isRefreshing = false

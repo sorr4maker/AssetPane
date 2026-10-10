@@ -21,19 +21,35 @@ struct AssetPanelView: View {
     @ObservedObject var model: AppModel
     @State private var heightAtUnitScale: CGFloat = 540   // 缩放比例为 1 时内容的高度
 
+    /// 拖动缩放手柄时冻结的排版（比例和尺寸）：缩放过程中内容的排版尺寸完全不变，每一帧只改整体缩放，松手后再按新大小清晰地重排
+    private struct Frozen { let k: CGFloat; let size: CGSize }
+    @State private var frozen: Frozen? = nil
+    @State private var currentK: CGFloat = 1
+    @State private var currentSize: CGSize = CGSize(width: designWidth, height: 540)
+
     var body: some View {
         GeometryReader { geo in
-            let k = min(max(min(geo.size.width / designWidth, geo.size.height / max(heightAtUnitScale, 1)), 0.55), 2.4)
+            let kFit = min(max(min(geo.size.width / designWidth, geo.size.height / max(heightAtUnitScale, 1)), 0.55), 2.4)
+            let k = frozen?.k ?? kFit
+            let layoutWidth = frozen?.size.width ?? geo.size.width
+            let visualScale = frozen.map { min(geo.size.width / $0.size.width, geo.size.height / $0.size.height) } ?? 1
             PanelContent(model: model, summary: model.summary, k: k)
-                .frame(width: geo.size.width, alignment: .topLeading)
+                .equatable()   // 数据和排版比例没变时跳过重新生成，缩放时只剩整体变换
+                .frame(width: layoutWidth, alignment: .topLeading)
                 .fixedSize(horizontal: false, vertical: true)
                 .background(GeometryReader { g in Color.clear.preference(key: HeightKey.self, value: g.size.height) })
                 .onPreferenceChange(HeightKey.self) { h in
+                    guard frozen == nil else { return }
                     // 内容高度和缩放比例成正比，除回去得到「比例为 1 时」的高度
                     let unit = h / k
                     if abs(unit - heightAtUnitScale) > 0.5 { heightAtUnitScale = unit }
                 }
+                .scaleEffect(visualScale, anchor: .topLeading)
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                .onChange(of: kFit) { _, new in if frozen == nil { currentK = new } }
+                .onChange(of: geo.size) { _, new in if frozen == nil { currentSize = new } }
+                .onChange(of: model.liveResizing) { _, live in frozen = live ? Frozen(k: currentK, size: currentSize) : nil }
+                .onAppear { currentK = kFit; currentSize = geo.size }
         }
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 1) }
@@ -68,7 +84,11 @@ private struct HoverRow<Content: View>: View {
     }
 }
 
-private struct PanelContent: View {
+private struct PanelContent: View, Equatable {
+    static func == (a: PanelContent, b: PanelContent) -> Bool {
+        a.k == b.k && a.summary.updatedAt == b.summary.updatedAt && a.summary.totalValue == b.summary.totalValue
+    }
+
     @ObservedObject var model: AppModel
     let summary: Summary
     let k: CGFloat

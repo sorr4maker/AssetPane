@@ -74,6 +74,7 @@ final class PanelController {
         container.layer?.masksToBounds = true
         
         let host = FirstMouseHostingView(rootView: AssetPanelView(model: model))
+        host.sizingOptions = []   // 不让 SwiftUI 在每次缩放时反过来和窗口协商大小（这是缩放卡顿的主要原因之一）
         host.frame = container.bounds
         host.autoresizingMask = [.width, .height]
         container.addSubview(host)
@@ -170,6 +171,11 @@ final class Grip: NSView {
     override func mouseDown(with event: NSEvent) {
         startFrame = window?.frame ?? .zero
         startMouse = NSEvent.mouseLocation
+        MainActor.assumeIsolated { AppModel.shared.liveResizing = true }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        MainActor.assumeIsolated { AppModel.shared.liveResizing = false }
     }
 
     override func mouseDragged(with event: NSEvent) {
